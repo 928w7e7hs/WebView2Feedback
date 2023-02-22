@@ -3,13 +3,12 @@ IFrame Memory Usage API
 
 # Background
 The WebView2 team has been asked to provide support for monitoring iframe 
-memory usage. check grammar mistake for "Developer needs to know how much 
-memory each iframe consumes. To do that, they need to get render process 
-id for each iframe". However, WV2 only tracks the render frame host for 
-top-level iframes. This limits the [ICoreWebView2Frame2](https://learn.microsoft.com/en-us/microsoft-edge/webview2/reference/win32/icorewebview2frame?view=webview2-1.0.1518.46) apis for first-level iframes only. For instance, we can handle iframe 
-created event for first-level iframe, but not for nested iframes with depth 
-greater than 1. Also, WV2 lacks an API to get the render process id for 
-its iframe.
+memory usage. Developer needs to know how much memory each iframe consumes. 
+To do that, they need to get render process id for each iframe". However, 
+WV2 only tracks the render frame host for top-level iframes. This limits the 
+[ICoreWebView2Frame2](https://learn.microsoft.com/en-us/microsoft-edge/webview2/reference/win32/icorewebview2frame?view=webview2-1.0.1518.46) apis for first-level iframes only. For instance, we can handle iframe created event for first-level iframe, 
+but not for nested iframes with depth greater than 1. Also, WV2 lacks an API to 
+get the render process id for its iframe.
 <pre>
                            main_frame  [depth:0]
                          /     |       \
@@ -30,7 +29,6 @@ the render process id is changed for `CoreWebView2` or `CoreWebView2Frame`.
 
 Additionally, we propose to add the `FrameCreated` event to `CoreWebView2Frame`. 
 This event fires when a new frame is created.
-
 
 # Examples
 C++
