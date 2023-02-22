@@ -55,7 +55,7 @@ void ScenarioWebViewEventMonitor::InitializeFrameEventView(
     auto frame5 = webviewFrame.try_query<ICoreWebView2Frame5>();
     if (frame5)
     {
-        //! [ICoreWebView2Frame:add_ProcessIdChanged]
+        //! [ICoreWebView2Frame:add_RenderProcessIdChanged]
         frame5->add_FrameCreated(
             Callback<ICoreWebView2NestedFrameCreatedEventHandler>(
                 [this, depth](
@@ -143,7 +143,7 @@ interface ICoreWebView2NestedFrameCreatedEventHandler : IUnknown {
                  [in] ICoreWebView2FrameCreatedEventArgs* args);
 }
 
-/// Receives `ProcessIdChanged` event.
+/// Receives `RenderProcessIdChanged` event.
 // MSOWNERS: wangsongjin@microsoft.com
 [uuid(012a41fe-a41f-11ed-a8fc-0242ac120002), object, pointer_default(unique)]
 interface ICoreWebView2RenderProcessIdChangedEventHandler : IUnknown {
