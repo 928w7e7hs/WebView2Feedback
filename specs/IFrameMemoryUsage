@@ -84,7 +84,7 @@ void ScenarioWebViewEventMonitor::InitializeFrameEventView(
                 .Get(),
             &m_frameCreatedToken);
         //! [ICoreWebView2Frame:add_RenderProcessIdChanged]
-        frame5->add_ProcessIdChanged(
+        frame5->add_RenderProcessIdChanged(
             Callback<ICoreWebView2FrameRenderProcessIdChangedEventHandler>(
                 [this](
                     ICoreWebView2Frame* sender,
