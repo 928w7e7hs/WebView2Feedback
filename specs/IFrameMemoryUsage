@@ -248,5 +248,4 @@ namespace Microsoft.Web.WebView2.Core
         }
     }
 }
-
 ```
