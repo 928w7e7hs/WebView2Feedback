@@ -23,7 +23,7 @@ In this document we describe the updated API. We'd appreciate your feedback.
 
 # Description
 We propose extending `CoreWebView2` and `CoreWebView2Frame` to include the 
-`ProcessId` property and  `ProcessIdChanged` event. This property stores 
+`RenderProcessId` property and  `RenderProcessIdChanged` event. This property stores 
 the render process id for its iframe. This event will be raised whenever 
 the render process id is changed for `CoreWebView2` or `CoreWebView2Frame`.
 
@@ -55,7 +55,7 @@ void ScenarioWebViewEventMonitor::InitializeFrameEventView(
     auto frame5 = webviewFrame.try_query<ICoreWebView2Frame5>();
     if (frame5)
     {
-        //! [ICoreWebView2Frame:add_ProcessChanged]
+        //! [ICoreWebView2Frame:add_ProcessIdChanged]
         frame5->add_FrameCreated(
             Callback<ICoreWebView2NestedFrameCreatedEventHandler>(
                 [this, depth](
@@ -75,7 +75,7 @@ void ScenarioWebViewEventMonitor::InitializeFrameEventView(
                     {
                         //! [ICoreWebView2Frame:get_ProcessId]
                         unsigned int processId;
-                        CHECK_FAILURE(webviewFrame5->get_ProcessId(&processId));
+                        CHECK_FAILURE(webviewFrame5->get_RenderProcessId(&processId));
                         message +=
                             L",\"render process id\": " + std::to_wstring((int)processId);
                     }
@@ -83,9 +83,9 @@ void ScenarioWebViewEventMonitor::InitializeFrameEventView(
                 })
                 .Get(),
             &m_frameCreatedToken);
-        //! [ICoreWebView2Frame:add_ProcessChanged]
+        //! [ICoreWebView2Frame:add_RenderProcessIdChanged]
         frame5->add_ProcessIdChanged(
-            Callback<ICoreWebView2FrameRenderProcessChangedEventHandler>(
+            Callback<ICoreWebView2FrameRenderProcessIdChangedEventHandler>(
                 [this](
                     ICoreWebView2Frame* sender,
                     IUnknown* args) -> HRESULT 
@@ -131,8 +131,8 @@ void WebViewFrames_CreatedNestedIFrames(object sender, CoreWebView2FrameCreatedE
 interface ICoreWebView2_18;
 interface ICoreWebView2Frame5;
 interface ICoreWebView2NestedFrameCreatedEventHandler;
-interface ICoreWebView2RenderProcessChangedEventHandler;
-interface ICoreWebView2FrameRenderProcessChangedEventHandler;
+interface ICoreWebView2RenderProcessIdChangedEventHandler;
+interface ICoreWebView2FrameRenderProcessIdChangedEventHandler;
 
 /// Receives `FrameCreated` event.
 // MSOWNERS: wangsongjin@microsoft.com
@@ -143,20 +143,20 @@ interface ICoreWebView2NestedFrameCreatedEventHandler : IUnknown {
                  [in] ICoreWebView2FrameCreatedEventArgs* args);
 }
 
-/// Receives `ProcessChanged` event.
+/// Receives `ProcessIdChanged` event.
 // MSOWNERS: wangsongjin@microsoft.com
 [uuid(012a41fe-a41f-11ed-a8fc-0242ac120002), object, pointer_default(unique)]
-interface ICoreWebView2RenderProcessChangedEventHandler : IUnknown {
+interface ICoreWebView2RenderProcessIdChangedEventHandler : IUnknown {
   /// Provides the result for the process changed event.
   /// No event args exist and the args parameter is set to null.
   HRESULT Invoke([in] ICoreWebView2 * sender,
                  [in] IUnknown* args);
 }
 
-/// Receives `ProcessChanged` event.
+/// Receives `ProcessIdChanged` event.
 // MSOWNERS: wangsongjin@microsoft.com
 [uuid(c1e0a3d2-a74b-11ed-afa1-0242ac120002), object, pointer_default(unique)]
-interface ICoreWebView2FrameRenderProcessChangedEventHandler : IUnknown {
+interface ICoreWebView2FrameRenderProcessIdChangedEventHandler : IUnknown {
   /// Provides the result for the process changed event.
   HRESULT Invoke([in] ICoreWebView2Frame* sender,
                  [in] IUnknown* args);
@@ -179,19 +179,19 @@ interface ICoreWebView2Frame5 : ICoreWebView2Frame4 {
   // MSOWNERS: wangsongjin@microsoft.com
   HRESULT remove_FrameCreated([in] EventRegistrationToken token);
 
-  /// Get the render process id of the iframe
+  /// Get the render process id of the iframe.
   // MSOWNERS: wangsongjin@microsoft.com
-  [propget] HRESULT ProcessId([out, retval] UINT32* value);
+  [propget] HRESULT RenderProcessId([out, retval] UINT32* value);
 
-  /// Subscribe to render process Id changed event
+  /// Subscribe to render process Id changed event.
   // MSOWNERS: wangsongjin@microsoft.com
-  HRESULT add_ProcessIdChanged(
-      [in] ICoreWebView2FrameRenderProcessChangedEventHandler* eventHandler,
+  HRESULT add_RenderProcessIdChanged(
+      [in] ICoreWebView2StagingFrameRenderProcessIdChangedEventHandler* eventHandler,
       [out] EventRegistrationToken* token);
 
-  /// Remove an event handler previously added with add_ProcessIdChanged.
+  /// Remove an event handler previously added with add_RenderProcessIdChanged.
   // MSOWNERS: wangsongjin@microsoft.com
-  HRESULT remove_ProcessIdChanged([in] EventRegistrationToken token);
+  HRESULT remove_RenderProcessIdChanged([in] EventRegistrationToken token);
 }
 
 /// A continuation of the `ICoreWebView2` interface to support get 
@@ -200,17 +200,17 @@ interface ICoreWebView2Frame5 : ICoreWebView2Frame4 {
 interface ICoreWebView2_18 : ICoreWebView2_17 {
   /// Get the render process id of the iframe
   // MSOWNERS: wangsongjin@microsoft.com
-  [propget] HRESULT ProcessId([out, retval] UINT32* value);
+    [propget] HRESULT RenderProcessId([out, retval] UINT32* value);
 
   /// Subscribe to render process id changed event
   // MSOWNERS: wangsongjin@microsoft.com
-  HRESULT add_ProcessIdChanged(
-      [in] ICoreWebView2RenderProcessChangedEventHandler* eventHandler,
+  HRESULT add_RenderProcessIdChanged(
+      [in] ICoreWebView2StagingRenderProcessIdChangedEventHandler* eventHandler,
       [out] EventRegistrationToken* token);
 
-  /// Remove an event handler previously added with add_ProcessIdChanged.
+  /// Remove an event handler previously added with add_RenderProcessIdChanged.
   // MSOWNERS: wangsongjin@microsoft.com
-  HRESULT remove_ProcessIdChanged([in] EventRegistrationToken token);
+  HRESULT remove_RenderProcessIdChanged([in] EventRegistrationToken token);
 }
 ```
 
@@ -218,31 +218,24 @@ C#
 ```c# (but really MIDL3)
 namespace Microsoft.Web.WebView2.Core
 {   
-    runtimeclass CoreWebView2FrameCreatedEventArgs
-    {
-        // ICoreWebView2FrameCreatedEventArgs members
-        CoreWebView2Frame Frame { get; };
-    }
-
     runtimeclass CoreWebView2
     {
         [interface_name("Microsoft.Web.WebView2.Core.ICoreWebView2_18")]
         {
             // ICoreWebView2_18 members
-            UInt32 ProcessId { get; };
-            event Windows.Foundation.TypedEventHandler<CoreWebView2, Object> ProcessIdChanged;
+            UInt32 RenderProcessId { get; };
+            event Windows.Foundation.TypedEventHandler<CoreWebView2, Object> RenderProcessIdChanged;
         }
     }
 
-    // Skipping class CoreWebView2FrameInfoCollection
     runtimeclass CoreWebView2Frame
     {
         [interface_name("Microsoft.Web.WebView2.Core.ICoreWebView2Frame10")]
         {
             // ICoreWebView2Frame10 members
-            UInt32 ProcessId { get; };
+            UInt32 RenderProcessId { get; };
             event Windows.Foundation.TypedEventHandler<CoreWebView2Frame, CoreWebView2FrameCreatedEventArgs> FrameCreated;
-            event Windows.Foundation.TypedEventHandler<CoreWebView2Frame, Object> ProcessIdChanged;
+            event Windows.Foundation.TypedEventHandler<CoreWebView2Frame, Object> RenderProcessIdChanged;
         }
     }
 }
