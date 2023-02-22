@@ -1,0 +1,252 @@
+IFrame Memory Usage API
+===
+
+# Background
+The WebView2 team has been asked to provide support for monitoring iframe 
+memory usage. check grammar mistake for "Developer needs to know how much 
+memory each iframe consumes. To do that, they need to get render process 
+id for each iframe". However, WV2 only tracks the render frame host for 
+top-level iframes. This limits the [ICoreWebView2Frame2](https://learn.microsoft.com/en-us/microsoft-edge/webview2/reference/win32/icorewebview2frame?view=webview2-1.0.1518.46) apis for first-level iframes only. For instance, we can handle iframe 
+created event for first-level iframe, but not for nested iframes with depth 
+greater than 1. Also, WV2 lacks an API to get the render process id for 
+its iframe.
+<pre>
+                           main_frame  [depth:0]
+                         /     |       \
+      first_level_iframe_0     ...    first_level_iframe_n             [depth:1, first level iframe]
+                |          \                     |
+      second_level_iframe_0 ...       second_level_iframe_n ...        [depth:2, second level iframe]
+               |
+              ...                                                      
+</pre> 
+
+In this document we describe the updated API. We'd appreciate your feedback.
+
+# Description
+We propose extending `CoreWebView2` and `CoreWebView2Frame` to include the 
+`ProcessId` property and  `ProcessIdChanged` event. This property stores 
+the render process id for its iframe. This event will be raised whenever 
+the render process id is changed for `CoreWebView2` or `CoreWebView2Frame`.
+
+Additionally, we propose to add the `FrameCreated` event to `CoreWebView2Frame`. 
+This event fires when a new frame is created.
+
+
+# Examples
+C++
+```c++
+void ScenarioWebViewEventMonitor::InitializeEventView(ICoreWebView2* webviewEventView)
+{
+    m_webviewEventSource4->add_FrameCreated(
+            Callback<ICoreWebView2FrameCreatedEventHandler>(
+                [this](ICoreWebView2* sender, ICoreWebView2FrameCreatedEventArgs* args)
+                    -> HRESULT {
+                    // ...
+                    // The new frame created event can be recursively initialized
+                    InitializeFrameEventView(webviewFrame, first_level_iframe_depth + 1);
+                    // ...
+                    return S_OK;
+                })
+                .Get(),
+            &m_frameCreatedToken);
+}
+
+void ScenarioWebViewEventMonitor::InitializeFrameEventView(
+    wil::com_ptr<ICoreWebView2Frame> webviewFrame, int depth) 
+{
+    auto frame5 = webviewFrame.try_query<ICoreWebView2Frame5>();
+    if (frame5)
+    {
+        //! [ICoreWebView2Frame:add_ProcessChanged]
+        frame5->add_FrameCreated(
+            Callback<ICoreWebView2NestedFrameCreatedEventHandler>(
+                [this, depth](
+                    ICoreWebView2Frame* sender,
+                    ICoreWebView2FrameCreatedEventArgs* args) -> HRESULT
+                {
+                    std::wstring message;
+                    wil::com_ptr<ICoreWebView2Frame> webviewFrame;
+                    CHECK_FAILURE(args->get_Frame(&webviewFrame));
+                    wil::unique_cotaskmem_string name;
+                    CHECK_FAILURE(webviewFrame->get_Name(&name));
+                    message += L"\"frame\": " + name.get());
+                    InitializeFrameEventView(webviewFrame, depth + 1);
+                    message += L",\"depth\": " + std::to_wstring(depth);
+                    auto webviewFrame5 = webviewFrame.try_query<ICoreWebView2Frame5>();
+                    if (webviewFrame5)
+                    {
+                        //! [ICoreWebView2Frame:get_ProcessId]
+                        unsigned int processId;
+                        CHECK_FAILURE(webviewFrame5->get_ProcessId(&processId));
+                        message +=
+                            L",\"render process id\": " + std::to_wstring((int)processId);
+                    }
+                    return S_OK;
+                })
+                .Get(),
+            &m_frameCreatedToken);
+        //! [ICoreWebView2Frame:add_ProcessChanged]
+        frame5->add_ProcessIdChanged(
+            Callback<ICoreWebView2FrameRenderProcessChangedEventHandler>(
+                [this](
+                    ICoreWebView2Frame* sender,
+                    IUnknown* args) -> HRESULT 
+                {
+                    // Do something when render process id is changed
+                })
+                .Get(),
+            &m_ProcessIdChangedToken);
+    }
+```
+C#
+```c#
+void WebView_HandleIFrames(object sender, CoreWebView2FrameCreatedEventArgs args)
+{
+    _webViewFrames.Add(args.Frame);
+    args.Frame.FrameCreated += WebViewFrames_CreatedNestedIFrames;
+    args.Frame.Destroyed += (frameDestroyedSender, frameDestroyedArgs) =>
+    {
+        var frameToRemove = _webViewFrames.SingleOrDefault(r => r.IsDestroyed() == 1);
+        if (frameToRemove != null)
+            _webViewFrames.Remove(frameToRemove);
+    };
+}
+
+void WebViewFrames_CreatedNestedIFrames(object sender, CoreWebView2FrameCreatedEventArgs args)
+{
+    // Add frame created event for webViewFrames
+    _webViewFrames.Add(args.Frame);
+    args.Frame.FrameCreated += WebViewFrames_CreatedNestedIFrames;
+
+    args.Frame.Destroyed += (frameDestroyedSender, frameDestroyedArgs) =>
+    {
+        var frameToRemove = _webViewFrames.SingleOrDefault(r => r.IsDestroyed() == 1);
+        if (frameToRemove != null)
+            _webViewFrames.Remove(frameToRemove);
+    };
+}
+```
+
+# API Details
+## C++
+```cpp
+interface ICoreWebView2_18;
+interface ICoreWebView2Frame5;
+interface ICoreWebView2NestedFrameCreatedEventHandler;
+interface ICoreWebView2RenderProcessChangedEventHandler;
+interface ICoreWebView2FrameRenderProcessChangedEventHandler;
+
+/// Receives `FrameCreated` event.
+// MSOWNERS: wangsongjin@microsoft.com
+[uuid(c0e55260-a1bb-11ed-a8fc-0242ac120002), object, pointer_default(unique)]
+interface ICoreWebView2NestedFrameCreatedEventHandler : IUnknown {
+  /// Provides the result for the iframe created event.
+  HRESULT Invoke([in] ICoreWebView2Frame* sender,
+                 [in] ICoreWebView2FrameCreatedEventArgs* args);
+}
+
+/// Receives `ProcessChanged` event.
+// MSOWNERS: wangsongjin@microsoft.com
+[uuid(012a41fe-a41f-11ed-a8fc-0242ac120002), object, pointer_default(unique)]
+interface ICoreWebView2RenderProcessChangedEventHandler : IUnknown {
+  /// Provides the result for the process changed event.
+  /// No event args exist and the args parameter is set to null.
+  HRESULT Invoke([in] ICoreWebView2 * sender,
+                 [in] IUnknown* args);
+}
+
+/// Receives `ProcessChanged` event.
+// MSOWNERS: wangsongjin@microsoft.com
+[uuid(c1e0a3d2-a74b-11ed-afa1-0242ac120002), object, pointer_default(unique)]
+interface ICoreWebView2FrameRenderProcessChangedEventHandler : IUnknown {
+  /// Provides the result for the process changed event.
+  HRESULT Invoke([in] ICoreWebView2Frame* sender,
+                 [in] IUnknown* args);
+}
+
+/// This is an extension of the ICoreWebView2Frame interface.
+// MSOWNERS: wangsongjin@microsoft.com
+[uuid(04baa798-a0e9-11ed-a8fc-0242ac120002), object, pointer_default(unique)]
+interface ICoreWebView2Frame5 : ICoreWebView2Frame4 {
+  /// Raised when a new iframe is created.
+  /// Handle this event to get access to ICoreWebView2Frame objects.
+  /// Use ICoreWebView2Frame.add_Destroyed to listen for when this iframe goes
+  /// away.
+  // MSOWNERS: wangsongjin@microsoft.com
+  HRESULT add_FrameCreated(
+      [in] ICoreWebView2NestedFrameCreatedEventHandler* eventHandler,
+      [out] EventRegistrationToken* token);
+
+  /// Remove an event handler previously added with add_FrameCreated.
+  // MSOWNERS: wangsongjin@microsoft.com
+  HRESULT remove_FrameCreated([in] EventRegistrationToken token);
+
+  /// Get the render process id of the iframe
+  // MSOWNERS: wangsongjin@microsoft.com
+  [propget] HRESULT ProcessId([out, retval] UINT32* value);
+
+  /// Subscribe to render process Id changed event
+  // MSOWNERS: wangsongjin@microsoft.com
+  HRESULT add_ProcessIdChanged(
+      [in] ICoreWebView2FrameRenderProcessChangedEventHandler* eventHandler,
+      [out] EventRegistrationToken* token);
+
+  /// Remove an event handler previously added with add_ProcessIdChanged.
+  // MSOWNERS: wangsongjin@microsoft.com
+  HRESULT remove_ProcessIdChanged([in] EventRegistrationToken token);
+}
+
+/// A continuation of the `ICoreWebView2` interface to support get 
+/// render process id and handle render process change event
+[uuid(ad712504-a66d-11ed-afa1-0242ac120002), object, pointer_default(unique)]
+interface ICoreWebView2_18 : ICoreWebView2_17 {
+  /// Get the render process id of the iframe
+  // MSOWNERS: wangsongjin@microsoft.com
+  [propget] HRESULT ProcessId([out, retval] UINT32* value);
+
+  /// Subscribe to render process id changed event
+  // MSOWNERS: wangsongjin@microsoft.com
+  HRESULT add_ProcessIdChanged(
+      [in] ICoreWebView2RenderProcessChangedEventHandler* eventHandler,
+      [out] EventRegistrationToken* token);
+
+  /// Remove an event handler previously added with add_ProcessIdChanged.
+  // MSOWNERS: wangsongjin@microsoft.com
+  HRESULT remove_ProcessIdChanged([in] EventRegistrationToken token);
+}
+```
+
+C#
+```c# (but really MIDL3)
+namespace Microsoft.Web.WebView2.Core
+{   
+    runtimeclass CoreWebView2FrameCreatedEventArgs
+    {
+        // ICoreWebView2FrameCreatedEventArgs members
+        CoreWebView2Frame Frame { get; };
+    }
+
+    runtimeclass CoreWebView2
+    {
+        [interface_name("Microsoft.Web.WebView2.Core.ICoreWebView2_18")]
+        {
+            // ICoreWebView2_18 members
+            UInt32 ProcessId { get; };
+            event Windows.Foundation.TypedEventHandler<CoreWebView2, Object> ProcessIdChanged;
+        }
+    }
+
+    // Skipping class CoreWebView2FrameInfoCollection
+    runtimeclass CoreWebView2Frame
+    {
+        [interface_name("Microsoft.Web.WebView2.Core.ICoreWebView2Frame10")]
+        {
+            // ICoreWebView2Frame10 members
+            UInt32 ProcessId { get; };
+            event Windows.Foundation.TypedEventHandler<CoreWebView2Frame, CoreWebView2FrameCreatedEventArgs> FrameCreated;
+            event Windows.Foundation.TypedEventHandler<CoreWebView2Frame, Object> ProcessIdChanged;
+        }
+    }
+}
+
+```
